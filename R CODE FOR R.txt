@@ -1,0 +1,114 @@
+# Load necessary libraries
+library(shiny)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(readr)
+
+# Define UI
+ui <- fluidPage(
+  titlePanel("Interactive Tool for Visualizing Marks Distribution"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      fileInput("file1", "Choose CSV File", accept = ".csv"),
+      uiOutput("subject_ui"),
+      checkboxInput("show_stats", "Show Statistics", TRUE)
+    ),
+    
+    mainPanel(
+      tabsetPanel(
+        tabPanel("Summary Table", tableOutput("summary_table")),
+        tabPanel("Histogram", plotlyOutput("hist_plot")),
+        tabPanel("Box Plot", plotlyOutput("box_plot")),
+        tabPanel("Bar Chart", plotlyOutput("bar_plot")),
+        tabPanel("Density Plot", plotlyOutput("density_plot")),
+        tabPanel("Statistics", verbatimTextOutput("stats_text"))
+      )
+    )
+  )
+)
+
+# Define server logic
+server <- function(input, output, session) {
+  
+  # Reactive expression to read the CSV file
+  data <- reactive({
+    req(input$file1)
+    read_csv(input$file1$datapath)
+  })
+  
+  # Dynamic UI for subject selection
+  output$subject_ui <- renderUI({
+    req(data())
+    subjects <- names(data())[-1]  # Assuming the first column is Student Name/ID
+    selectInput("subject", "Select Subject", choices = subjects)
+  })
+  
+  # Reactive expression for selected data
+  selected_data <- reactive({
+    req(input$subject)
+    df <- data()
+    df <- df %>% select(Student = 1, Marks = input$subject)
+    df <- na.omit(df)
+    df
+  })
+  
+  # Render summary table
+  output$summary_table <- renderTable({
+    head(selected_data())
+  })
+  
+  # Render histogram plot
+  output$hist_plot <- renderPlotly({
+    p <- ggplot(selected_data(), aes(x = Marks)) +
+      geom_histogram(binwidth = 5, fill = "skyblue", color = "black") +
+      theme_minimal() +
+      labs(title = paste("Histogram -", input$subject), x = "Marks", y = "Count")
+    ggplotly(p)
+  })
+  
+  # Render box plot
+  output$box_plot <- renderPlotly({
+    p <- ggplot(selected_data(), aes(y = Marks)) +
+      geom_boxplot(fill = "orange") +
+      theme_minimal() +
+      labs(title = paste("Boxplot -", input$subject), y = "Marks")
+    ggplotly(p)
+  })
+  
+  # Render bar chart (average marks per student)
+  output$bar_plot <- renderPlotly({
+    p <- ggplot(selected_data(), aes(x = Student, y = Marks)) +
+      geom_bar(stat = "identity", fill = "lightgreen") +
+      theme_minimal() +
+      labs(title = paste("Average Marks per Student -", input$subject), x = "Student", y = "Marks") +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    ggplotly(p)
+  })
+  
+  # Render density plot
+  output$density_plot <- renderPlotly({
+    p <- ggplot(selected_data(), aes(x = Marks)) +
+      geom_density(fill = "lightblue", alpha = 0.5) +
+      theme_minimal() +
+      labs(title = paste("Density Plot -", input$subject), x = "Marks", y = "Density")
+    ggplotly(p)
+  })
+  
+  # Render statistics text
+  output$stats_text <- renderPrint({
+    req(input$show_stats)
+    marks <- selected_data()$Marks
+    cat("Mean:", mean(marks), "\n")
+    cat("Median:", median(marks), "\n")
+    cat("Standard Deviation:", sd(marks), "\n")
+    cat("Minimum:", min(marks), "\n")
+    cat("Maximum:", max(marks), "\n")
+    cat("25th Percentile:", quantile(marks, 0.25), "\n")
+    cat("75th Percentile:", quantile(marks, 0.75), "\n")
+  })
+}
+
+# Run the application
+shinyApp(ui = ui, server = server)
